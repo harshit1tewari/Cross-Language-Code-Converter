@@ -187,3 +187,94 @@ class JavaGenerator(BaseGenerator):
         target = self.visit(node.target)
         value = self.visit(node.value)
         return f"{self._make_indent()}int {target} = {value}"
+
+# --- Python Generator ---
+class PythonGenerator(BaseGenerator):
+    def visit(self, node):
+        if isinstance(node, ProgramNode):
+            return self.visit_program(node)
+        elif isinstance(node, FunctionNode):
+            return self.visit_function(node)
+        elif isinstance(node, PrintNode):
+            return self.visit_print(node)
+        elif isinstance(node, MathOpNode):
+            return self.visit_math_op(node)
+        elif isinstance(node, VariableNode):
+            return self.visit_variable(node)
+        elif isinstance(node, StringLiteralNode):
+            return self.visit_string_literal(node)
+        elif isinstance(node, NumberLiteralNode):
+            return self.visit_number_literal(node)
+        elif isinstance(node, PowerNode):
+            return self.visit_power(node)
+        elif isinstance(node, ForLoopNode):
+            return self.visit_for_loop(node)
+        elif isinstance(node, WhileLoopNode):
+            return self.visit_while_loop(node)
+        elif isinstance(node, ComparisonNode):
+            return self.visit_comparison(node)
+        elif isinstance(node, AssignmentNode):
+            return self.visit_assignment(node)
+        elif isinstance(node, FunctionCallNode):
+            return self.visit_function_call(node)
+        else:
+            raise NotImplementedError(f"Unsupported node type: {type(node)}")
+
+    def visit_program(self, node):
+        return "\n".join(self.visit(stmt) for stmt in node.statements)
+
+    def visit_function(self, node):
+        args_str = ", ".join(node.args)
+        body = "\n".join("    " + self.visit(stmt) for stmt in node.body)
+        return f"def {node.name}({args_str}):\n{body}"
+
+    def visit_print(self, node):
+        expr = self.visit(node.expression)
+        # If the expression contains a variable, wrap it in str()
+        if isinstance(node.expression, VariableNode):
+            return f"print({expr})"
+        elif isinstance(node.expression, MathOpNode):
+            return f"print({expr})"
+        else:
+            return f"print({expr})"
+
+    def visit_math_op(self, node):
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        # If either operand is a variable, wrap it in str()
+        if isinstance(node.left, VariableNode):
+            left = f"str({left})"
+        if isinstance(node.right, VariableNode):
+            right = f"str({right})"
+        return f"({left} {node.operator} {right})"
+
+    def visit_variable(self, node):
+        return node.name
+
+    def visit_string_literal(self, node):
+        return f'"{node.value}"'
+
+    def visit_number_literal(self, node):
+        return node.value
+
+    def visit_power(self, node):
+        return f"({self.visit(node.base)} ** {self.visit(node.exponent)})"
+
+    def visit_for_loop(self, node):
+        # Format the for loop with proper spacing and indentation
+        body = "\n".join("    " + self.visit(stmt) for stmt in node.body)
+        return f"for {node.iterator} in {node.iterable}:\n{body}"
+
+    def visit_while_loop(self, node):
+        body = "\n".join("    " + self.visit(stmt) for stmt in node.body)
+        return f"while {self.visit(node.condition)}:\n{body}"
+
+    def visit_comparison(self, node):
+        return f"({self.visit(node.left)} {node.operator} {self.visit(node.right)})"
+
+    def visit_assignment(self, node):
+        return f"{self.visit(node.target)} = {self.visit(node.value)}"
+
+    def visit_function_call(self, node):
+        args_str = ", ".join(self.visit(arg) for arg in node.args)
+        return f"{node.name}({args_str})"
