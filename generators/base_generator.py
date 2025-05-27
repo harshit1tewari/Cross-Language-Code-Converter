@@ -278,3 +278,154 @@ class PythonGenerator(BaseGenerator):
     def visit_function_call(self, node):
         args_str = ", ".join(self.visit(arg) for arg in node.args)
         return f"{node.name}({args_str})"
+
+# --- C++ Generator ---
+class CppGenerator(BaseGenerator):
+    def visit_ProgramNode(self, node):
+        includes = (
+            "#include <iostream>\n"
+            "#include <string>\n"
+            "#include <vector>\n"
+            "#include <cmath>\n"
+            "\n"
+            "using namespace std;\n"
+        )
+
+        function_definitions = []
+        main_body_statements = []
+
+        for stmt in node.statements:
+            if isinstance(stmt, FunctionNode):
+                function_definitions.append(self.visit(stmt))
+            else:
+                main_body_statements.append(self.visit(stmt))
+
+        functions_code = "\n\n".join(function_definitions)
+        
+        main_function_body_code = ""
+        if main_body_statements:
+            self.current_indent_level = 1
+            # Process each statement in the main body
+            processed_statements = []
+            for stmt_code in main_body_statements:
+                # Add semicolon only if it's not a control structure and doesn't already have one
+                if not any(stmt_code.strip().startswith(keyword) for keyword in ['for', 'while', 'if']) and not stmt_code.strip().endswith(';'):
+                    stmt_code += ";"
+                processed_statements.append(self._make_indent() + stmt_code)
+            main_function_body_code = "\n".join(processed_statements)
+            self.current_indent_level = 0
+        else:
+            # If there are function definitions but no main body statements,
+            # call the first function found
+            if function_definitions:
+                first_func = next((stmt for stmt in node.statements if isinstance(stmt, FunctionNode)), None)
+                if first_func:
+                    args_str = ", ".join(["0" for _ in first_func.args])  # Default arguments
+                    main_function_body_code = f"{self.indent_char}{first_func.name}({args_str});"
+            else:
+                main_function_body_code = f"{self.indent_char}// No global statements to execute in main"
+
+        main_function = (
+            "\nint main() {\n"
+            f"{main_function_body_code}\n"
+            f"{self.indent_char}return 0;\n"
+            "}"
+        )
+        
+        return f"{includes}\n{functions_code}\n{main_function}"
+
+    def visit_FunctionNode(self, node):
+        args_str = ", ".join([f"int {arg}" for arg in node.args])
+        header = f"{self._make_indent()}int {node.name}({args_str}) {{"  # Changed return type to int
+        self.current_indent_level += 1
+        # Process each statement in the body
+        body_statements = []
+        for stmt in node.body:
+            stmt_code = self.visit(stmt)
+            # Add semicolon only if it's not a control structure and doesn't already have one
+            if not isinstance(stmt, (ForLoopNode, WhileLoopNode)) and not stmt_code.strip().endswith(';'):
+                stmt_code += ";"
+            body_statements.append(self._make_indent() + stmt_code)
+        
+        body_code = "\n".join(body_statements)
+        if not node.body:
+            body_code = f"{self._make_indent()}return 0;"  # Default return for empty functions
+        self.current_indent_level -= 1
+        return f"{header}\n{body_code}\n{self._make_indent()}}}"
+
+    def visit_PrintNode(self, node):
+        expr_code = self.visit(node.expression)
+        return f"cout << {expr_code} << endl"
+
+    def visit_PowerNode(self, node):
+        base_code = self.visit(node.base)
+        exponent_code = self.visit(node.exponent)
+        return f"pow({base_code}, {exponent_code})"
+
+    def visit_ForLoopNode(self, node):
+        iterator = node.iterator
+        iterable = self.visit(node.iterable)
+        
+        # Convert Python range to C++ for loop
+        if isinstance(iterable, str) and iterable.startswith("range("):
+            # Parse range arguments
+            range_args = iterable[6:-1].split(',')
+            if len(range_args) == 1:
+                # range(n) -> for(int i = 0; i < n; i++)
+                end = range_args[0].strip()
+                header = f"{self._make_indent()}for (int {iterator} = 0; {iterator} < {end}; {iterator}++) {{"
+            elif len(range_args) == 2:
+                # range(start, end) -> for(int i = start; i < end; i++)
+                start = range_args[0].strip()
+                end = range_args[1].strip()
+                header = f"{self._make_indent()}for (int {iterator} = {start}; {iterator} < {end}; {iterator}++) {{"
+            else:
+                # range(start, end, step) -> for(int i = start; i < end; i += step)
+                start = range_args[0].strip()
+                end = range_args[1].strip()
+                step = range_args[2].strip()
+                header = f"{self._make_indent()}for (int {iterator} = {start}; {iterator} < {end}; {iterator} += {step}) {{"
+        else:
+            # For other iterables, use range-based for loop
+            header = f"{self._make_indent()}for (const auto& {iterator} : {iterable}) {{"
+        
+        self.current_indent_level += 1
+        # Process each statement in the body
+        body_statements = []
+        for stmt in node.body:
+            stmt_code = self.visit(stmt)
+            # Add semicolon only if it's not a control structure and doesn't already have one
+            if not isinstance(stmt, (ForLoopNode, WhileLoopNode)) and not stmt_code.strip().endswith(';'):
+                stmt_code += ";"
+            body_statements.append(self._make_indent() + stmt_code)
+        
+        body_code = "\n".join(body_statements)
+        if not node.body:
+            body_code = f"{self._make_indent()}// Empty body"
+        self.current_indent_level -= 1
+        return f"{header}\n{body_code}\n{self._make_indent()}}}"
+
+    def visit_WhileLoopNode(self, node):
+        condition = self.visit(node.condition)
+        header = f"{self._make_indent()}while ({condition}) {{"
+        self.current_indent_level += 1
+        # Process each statement in the body
+        body_statements = []
+        for stmt in node.body:
+            stmt_code = self.visit(stmt)
+            # Add semicolon only if it's not a control structure and doesn't already have one
+            if not isinstance(stmt, (ForLoopNode, WhileLoopNode)) and not stmt_code.strip().endswith(';'):
+                stmt_code += ";"
+            body_statements.append(self._make_indent() + stmt_code)
+        
+        body_code = "\n".join(body_statements)
+        if not node.body:
+            body_code = f"{self._make_indent()}// Empty body"
+        self.current_indent_level -= 1
+        return f"{header}\n{body_code}\n{self._make_indent()}}}"
+
+    def visit_AssignmentNode(self, node):
+        target = self.visit(node.target)
+        value = self.visit(node.value)
+        return f"{self._make_indent()}int {target} = {value}"
+
